@@ -1,5 +1,6 @@
 package com.athleet.academy.student.dto;
 
+import com.athleet.academy.student.domain.BulkAction;
 import com.athleet.academy.student.domain.DominantSide;
 import com.athleet.academy.student.domain.Gender;
 import com.athleet.academy.student.domain.InjurySeverity;
@@ -87,6 +88,22 @@ public final class StudentDtos {
 
     public record InjuryResponse(UUID id, LocalDate injuryDate, String bodyPart, InjurySeverity severity,
                                  String description, LocalDate recoveredOn) {
+    }
+
+    /** Applies one action to 1-100 selected students, all or nothing. A reason is required to deregister. */
+    public record BulkRequest(@NotNull BulkAction action, @NotEmpty @Size(max = 100) Set<UUID> studentIds,
+                              @Size(max = 500) String reason) {
+    }
+
+    public record BulkResult(int updated) {
+    }
+
+    /** One problem found in an import file. Row 1 is the header row; the first student is row 2. Never contains the row's data. */
+    public record ImportError(int row, String column, String message) {
+    }
+
+    /** Result of checking (dryRun) or importing a file. {@code imported} is 0 for a check or when errors were found. */
+    public record ImportResult(boolean dryRun, int rows, int imported, boolean errorsTruncated, List<ImportError> errors) {
     }
 
     public record StudentConfigRequest(

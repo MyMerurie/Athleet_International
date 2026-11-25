@@ -5,7 +5,7 @@ export type AccessLevel = 'NONE' | 'VIEW' | 'MANAGE';
 export type RoleType = 'HEAD_OFFICE' | 'CENTER' | 'STUDENT';
 export type ActiveStatus = 'ACTIVE' | 'INACTIVE';
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
-export type StudentStatus = 'ACTIVE' | 'SUBMITTED' | 'DEREGISTERED';
+export type StudentStatus = 'ACTIVE' | 'SUBMITTED' | 'INACTIVE' | 'DEREGISTERED';
 export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
 
 export const MODULES: { key: AppModule; label: string }[] = [
@@ -217,6 +217,22 @@ export interface Student {
   contacts: StudentContact[];
   tags: string[];
   status: StudentStatus;
+}
+
+export type BulkAction = 'DEACTIVATE' | 'ACTIVATE' | 'DEREGISTER';
+
+export interface ImportError {
+  row: number;
+  column: string;
+  message: string;
+}
+
+export interface ImportResult {
+  dryRun: boolean;
+  rows: number;
+  imported: number;
+  errorsTruncated: boolean;
+  errors: ImportError[];
 }
 
 export interface StudentConfig {

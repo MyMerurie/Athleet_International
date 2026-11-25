@@ -1,6 +1,8 @@
 package com.athleet.academy.student.web;
 
 import com.athleet.academy.student.domain.StudentStatus;
+import com.athleet.academy.student.dto.StudentDtos.BulkRequest;
+import com.athleet.academy.student.dto.StudentDtos.BulkResult;
 import com.athleet.academy.student.dto.StudentDtos.ChangeBatchesRequest;
 import com.athleet.academy.student.dto.StudentDtos.DeregisterRequest;
 import com.athleet.academy.student.dto.StudentDtos.HistoryEventResponse;
@@ -12,6 +14,7 @@ import com.athleet.academy.student.dto.StudentDtos.TagsRequest;
 import com.athleet.academy.student.dto.StudentDtos.TransferRequest;
 import com.athleet.academy.student.dto.StudentDtos.TransferResult;
 import com.athleet.academy.student.dto.StudentDtos.TransferTarget;
+import com.athleet.academy.student.service.StudentBulkService;
 import com.athleet.academy.student.service.StudentService;
 import com.athleet.academy.student.service.StudentTransferService;
 import com.athleet.core.common.paging.PageResponse;
@@ -39,10 +42,12 @@ public class StudentController {
 
     private final StudentService students;
     private final StudentTransferService transfers;
+    private final StudentBulkService bulk;
 
-    public StudentController(StudentService students, StudentTransferService transfers) {
+    public StudentController(StudentService students, StudentTransferService transfers, StudentBulkService bulk) {
         this.students = students;
         this.transfers = transfers;
+        this.bulk = bulk;
     }
 
     @GetMapping
@@ -70,6 +75,11 @@ public class StudentController {
     @GetMapping("/transfer-targets")
     public List<TransferTarget> transferTargets(@PathVariable UUID orgId) {
         return transfers.targets(orgId);
+    }
+
+    @PostMapping("/bulk")
+    public BulkResult bulk(@PathVariable UUID orgId, @Valid @RequestBody BulkRequest req) {
+        return bulk.bulk(orgId, req);
     }
 
     @PostMapping("/{studentId}/transfer")

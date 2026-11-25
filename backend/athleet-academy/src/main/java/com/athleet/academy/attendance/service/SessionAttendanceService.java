@@ -51,6 +51,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -320,11 +321,22 @@ public class SessionAttendanceService {
         marks.saveAll(created);
     }
 
-    /** Existing marks plus an unmarked row for every active student who joined the batch since the last save. */
+    /**
+     * Existing marks plus an unmarked row for every active student who joined the batch since the last save.
+     * An unmarked row of a student who has since left the roster (deactivated, deregistered, moved) is dropped, so it
+     * cannot block submitting; rows that already hold a mark stay, they are part of that day's record.
+     */
     private List<AttendanceMark> ensureRoster(AttendanceSession s, Batch batch) {
+        List<Student> roster = students.activeInBatch(s.getOrganizationId(), batch.getId());
+        Set<UUID> onRoster = roster.stream().map(Student::getId).collect(Collectors.toSet());
         List<AttendanceMark> existing = new ArrayList<>(marks.findBySessionId(s.getId()));
+        List<AttendanceMark> stale = existing.stream().filter(m -> m.getStatus() == null && !onRoster.contains(m.getStudentId())).toList();
+        if (!stale.isEmpty()) {
+            marks.deleteAll(stale);
+            existing.removeAll(stale);
+        }
         Set<UUID> have = existing.stream().map(AttendanceMark::getStudentId).collect(Collectors.toSet());
-        List<AttendanceMark> created = students.activeInBatch(s.getOrganizationId(), batch.getId()).stream()
+        List<AttendanceMark> created = roster.stream()
                 .filter(st -> !have.contains(st.getId())).map(st -> new AttendanceMark(s.getId(), st.getId())).toList();
         marks.saveAll(created);
         existing.addAll(created);
@@ -336,14 +348,18 @@ public class SessionAttendanceService {
         List<AttendanceMark> existing = s == null ? List.of() : marks.findBySessionId(s.getId());
         Map<UUID, AttendanceMark> byStudent = existing.stream().collect(Collectors.toMap(AttendanceMark::getStudentId, m -> m));
         List<Student> roster = editable ? students.activeInBatch(a.organizationId(), batch.getId()) : List.of();
-        Set<UUID> ids = new HashSet<>(byStudent.keySet());
+        // While the coach can still edit, an unmarked row of a student who left the roster is not shown (see ensureRoster).
+        Set<UUID> ids = new HashSet<>();
+        byStudent.forEach((studentId, mark) -> {
+            if (!editable || mark.getStatus() != null) ids.add(studentId);
+        });
         roster.forEach(st -> ids.add(st.getId()));
         // The ids come from this session's marks and this academy's roster, so no organization filter: a student who was
         // transferred to another academy must still show up in the sessions that were recorded here.
         Map<UUID, Student> people = ids.isEmpty() ? Map.of() : students.findAllById(ids).stream()
                 .collect(Collectors.toMap(Student::getId, st -> st));
         List<MarkResponse> rows = people.values().stream()
-                .sorted(Comparator.comparing((Student st) -> st.getFirstName().toLowerCase()).thenComparing(Student::getId))
+                .sorted(Comparator.comparing((Student st) -> st.getFirstName().toLowerCase(Locale.ROOT)).thenComparing(Student::getId))
                 .map(st -> {
                     AttendanceMark m = byStudent.get(st.getId());
                     String name = st.getLastName() == null ? st.getFirstName() : st.getFirstName() + " " + st.getLastName();

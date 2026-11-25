@@ -11,7 +11,7 @@ then add Athleet-specific features. The parity checklist is [docs/acadware-featu
 
 ## 1. Where things stand (as of 2026-11-25)
 
-Done and merged to `main`:
+Done on `main` (Phase 2 sub-phases 2C and the hardening pass below are finished and tested but not committed yet):
 
 | Area | What exists |
 |---|---|
@@ -20,7 +20,7 @@ Done and merged to `main`:
 | Access | Roles (Head Office / Class types) with a per-module permission matrix (`AppModule` × `AccessLevel`), center-scoped roles |
 | Staff | List, invite, edit, role assignment |
 | Classes | Centers ("Class", label configurable), batches with training days, timings, coaches and capacity |
-| Students | Active / Submitted tabs, add/edit (3 steps: details, up to 3 secondary contacts, address & health incl. kit size), change batches, approve self-registrations, deregister; auto student number. **Profile page** (`/org/:orgId/students/:studentId`, opened from the name or the row menu "Profile"): Details, Contacts, Training (days from the batch slots), Attendance (month view), Injuries and History tabs, plus tag chips. Row menu: Profile, Edit, Batches, Transfer Student (to another academy of the group), Deregistration, Attendance, Tag Student, Injury Log, Student History and ID Card all work |
+| Students | Active / Submitted / Inactive tabs, bulk actions (deactivate, activate, deregister) on selected rows, CSV import, add/edit (3 steps: details, up to 3 secondary contacts, address & health incl. kit size), change batches, approve self-registrations, deregister; auto student number. **Profile page** (`/org/:orgId/students/:studentId`, opened from the name or the row menu "Profile"): Details, Contacts, Training (days from the batch slots), Attendance (month view), Injuries and History tabs, plus tag chips. Row menu: Profile, Edit, Batches, Transfer Student (to another academy of the group), Deregistration, Attendance, Tag Student, Injury Log, Student History and ID Card all work |
 | Dashboard | General (Headcount, Utilization) and Attendance (Live, Tracker) tabs. The Performance tab shows an info message |
 | Settings | Branding Preference (center label, currency, date format), Attendance Configuration and Player Unique ID Auto-generation (switch, prefix, "apply to students without one"). Every other settings section is a placeholder |
 | Web admin | React screens for all of the above, plus the Attendance page (mark students, approvals, staff in/out) and a My attendance punch dialog in the top bar; other sidebar items open a "Coming soon" page (`/org/:orgId/soon/:module`) |
@@ -128,7 +128,7 @@ Each item maps to an `AppModule` value and to a section of the inventory. "Done 
   configuration is per organization (affiliates do not inherit it), and absence alerts are not sent yet (hook:
   `AttendanceSessionApproved` event).
 
-### Phase 2 — Student profile completion (inventory §11.2)
+### Phase 2 — Student profile completion (inventory §11.2) — built and tested; 2C and the hardening pass are not committed yet
 - Student profile page (opens from a row): details, secondary contacts, kit size, training days, history.
 - Remaining Add Student steps (parent/secondary contacts, kit size).
 - Row actions: ID Card, Tag Student, Injury Log, Student History (Attendance arrives with Phase 1). Replace the current
@@ -154,8 +154,8 @@ packages); one new Flyway migration per sub-phase; the layouts are our own becau
   only; no writes for deregistered students); Injuries tab (table + one dialog); row menu item opens the tab.
 - [x] **Student History**: events REGISTERED, APPROVED, PLACEMENT_CHANGED, TRANSFERRED, DEACTIVATED, REACTIVATED,
   DEREGISTERED with name snapshots and actor; `GET /students/{id}/history`; History tab (read-only table); row menu item
-  opens the tab. Written today for registered, approved, placement changed and deregistered; TRANSFERRED arrives
-  with 2B, DEACTIVATED / REACTIVATED with 2C.
+  opens the tab. All events are written: registered, approved, placement changed, deregistered, transferred (2B),
+  deactivated / reactivated (2C).
 - Notes: profile tabs are deep-linkable with `?tab=injuries` / `?tab=history`. Health data (injuries) is audited
   without details. The Students list page loads class options even for users without class access, so a coach sees
   one 403 in the console there (pre-existing, harmless).
@@ -180,12 +180,58 @@ packages); one new Flyway migration per sub-phase; the layouts are our own becau
   empty); a linked app login's membership is not moved; transfer is offered from the Students row menu only (not from
   the profile page).
 
-**2C — Bulk import and bulk actions**
-- [ ] **Bulk actions**: new `INACTIVE` status; `POST .../students/bulk` (DEACTIVATE, ACTIVATE, DEREGISTER; 1-100 ids,
-  all-or-nothing); "Inactive" tab, checkbox column and one bulk dialog. Bulk *delete* is not built (it goes through the
-  Request flow in Phase 4).
-- [ ] **Bulk import (CSV)**: template download, dry-run check with row/column errors, then import in one transaction
-  (max 500 rows, 1 MB, no new dependency); one import dialog.
+**2C — Bulk import and bulk actions (done, checked via API and browser; checked as owner, center manager and coach)**
+- [x] Migration `V202611250004__student_inactive.sql` (adds `INACTIVE` to the student status check).
+- [x] **Bulk actions**: `POST .../students/bulk` with DEACTIVATE (Active to Inactive), ACTIVATE (Inactive to Active) or
+  DEREGISTER (Active, Inactive or Submitted; reason of at least 3 characters); 1-100 ids; Student manage; all-or-nothing:
+  an id that does not exist or is outside the caller's class gives 404 and nothing changes, a student in the wrong
+  status gives 422 `WRONG_STATE` (the message names nobody). Each student gets a DEACTIVATED / REACTIVATED /
+  DEREGISTERED history row and an audit record without the reason. Inactive students leave batch rosters, attendance
+  sessions and headcounts (those only count Active), cannot be transferred, and are not shown in the attendance
+  Tracker (which offers Active and Deregistered only). UI: "Inactive (n)" tab, checkbox column with select-all (Active
+  and Inactive tabs only), one "Bulk action" dialog. Bulk *delete* is not built (it goes through the Request flow in
+  Phase 4).
+- [x] **Bulk import (CSV)**: `GET .../students/import/template` (header row only, UTF-8 with BOM) and
+  `POST .../students/import?dryRun=true|false` (multipart, Student manage). Limits: `.csv` only, 1 MB, 500 students,
+  UTF-8, no new dependency (own strict RFC 4180 reader). 26 columns, all required in the header, any order: Class,
+  Batch (several separated by `;`), First Name, Last Name, Email, Gender, Date of Birth (`YYYY-MM-DD` or
+  `DD/MM/YYYY`), Country Code (defaults to +91 when a mobile is given), Mobile, Unique ID, Blood Group, Kit Size,
+  Country, State, City, Address, Pin Code, School Name, School Address, Grade, Dominant Side, Medical Condition,
+  Contact 1 Name / Relationship / Mobile / Email. Same validation as the Add Student form; classes and batches are
+  matched by name inside the caller's class; duplicate emails and Unique IDs are checked in the file and the academy
+  (one database query per file, not per row; problems come back in file order). A quoted value must be followed by a
+  comma or line break.
+  When Unique ID auto-generation is on, the Unique ID column is ignored. A check (dry run) returns up to 200 problems as
+  row, column and message (never the row's data); a real import only runs when there are none, inserts everything in
+  one transaction and writes REGISTERED history. One import dialog: template download, "Check file", problem table,
+  "Import N students".
+- Known limits: first names (and contact names) must be letters only, as in the Add Student form, so a name like
+  "Rahul2" is reported; import creates new students only (no updating); Contact 2 and 3 are not in the template (add
+  them in the student dialog); the browser pane used for checks cannot open a file chooser, so the file input was filled
+  by a script (the same network calls as a real choice).
+
+**Phase 2 testing and hardening (25 Nov 2026)**
+- [x] **End-to-end run**: automated API run of all Phase 2 flows (profile and contacts, tags / injuries / history, Unique
+  ID, transfer there and back, bulk actions, CSV import, attendance regression): 106 checked steps, all passing, plus a UI
+  pass as owner and coach. The runner script lives outside the repo for now (see Section 5).
+- [x] **Bug fixed**: a student deactivated or deregistered while an attendance draft was open stayed on the list as an
+  unmarked row and blocked Submit; `SessionAttendanceService` now drops unmarked rows of students who are no longer on
+  the roster. A student who already has a mark stays in that session (it is that day's record).
+- [x] **Small fixes**: the import button read "Import  students" before a file was checked; a CSV value with text after
+  the closing quote is now rejected; a contact mobile without a country code gets +91; attendance names are sorted with a
+  fixed locale.
+- [x] **Performance**: the import asks the database once for the file's e-mails and Unique IDs (not once per row) and
+  creates students through `StudentService.register` without per-row re-checks (a 500-student file: check 0.05 s,
+  import about 4 s); update / change-batches reuse one class and batch name lookup.
+- [x] **Security review of the Phase 2 code**: every request body is validated, access is checked first and out-of-scope
+  records give 404, the import checks extension, type and size before reading, audit records carry no personal details
+  (no reasons, no injury or contact data), the web token stays in memory. No new findings beyond the two items below.
+- Not done (decide later): unique indexes in the database for e-mail and Unique ID per academy, not counting deregistered
+  students (today only the services check, so two simultaneous requests could both pass; check existing data for
+  duplicates first), and neutralising spreadsheet formulas (`=`, `+`, `-`, `@`) in text fields if a CSV export is ever added.
+- [x] **Tester document**: `docs/test-plans/phase-2-student-profile-smoke-test-cases.pdf` (24 pages: 98 detailed cases,
+  7 end-to-end flows, 15 optional API checks, rules map, sign-off sheet). Phase 1's is `phase-1-attendance-smoke-test-cases.pdf`
+  in the same folder.
 
 ### Phase 3 — Communication
 - **Posts** (inventory §8, §11.7): create/edit/delete, media, audience, RSVP attendees.
@@ -226,6 +272,10 @@ extensions, exemptions, sales orders, EMI, revenue share, session-based billing 
   Performance tab, Assessment reports/leaderboards detail, lesson plans, tournaments, competition tracker, expense
   approval dialog, request filters. Capture these (structure only) before building the matching screens.
 - **No automated tests or CI yet.** Add them when the team decides to; until then, smoke-test the API and the UI by hand.
+  The Phase 2 API end-to-end runner (106 steps) is a Python script kept outside the repo; turning it into repo tests
+  (or a CI job against a throw-away database) is the quickest way to protect Phases 1 and 2 from regressions.
+- **Pre-commit state**: Phase 2C, the attendance-draft fix and the hardening pass are uncommitted on `main`; commit them
+  (suggested: one commit per sub-phase or one for Phase 2C plus fixes) before starting Phase 3.
 - **Email/SMS are not wired**: messages are only logged (dev) or dropped. Needed before invites and resets work outside dev.
 - **Rate limiting is in-process**; move it to a shared store before running more than one backend instance.
 - **Deployment**: no production environment, hosting or backup plan defined yet.

@@ -56,6 +56,14 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
 
     boolean existsByOrganizationIdAndUniqueIdIgnoreCaseAndStatusNot(UUID orgId, String uniqueId, StudentStatus status);
 
+    /** Which of these lower-cased e-mails belong to a non-deregistered student of the academy (one query for a whole import file). */
+    @Query("select lower(s.email) from Student s where s.organizationId = :orgId and lower(s.email) in :emails and s.status <> com.athleet.academy.student.domain.StudentStatus.DEREGISTERED")
+    List<String> emailsInUse(UUID orgId, Collection<String> emails);
+
+    /** Which of these lower-cased Unique IDs belong to a non-deregistered student of the academy. */
+    @Query("select lower(s.uniqueId) from Student s where s.organizationId = :orgId and lower(s.uniqueId) in :uniqueIds and s.status <> com.athleet.academy.student.domain.StudentStatus.DEREGISTERED")
+    List<String> activeUniqueIdsIn(UUID orgId, Collection<String> uniqueIds);
+
     /** Students that still need a generated Unique ID. */
     @Query("select s from Student s where s.organizationId = :orgId and s.uniqueId is null and s.status <> com.athleet.academy.student.domain.StudentStatus.DEREGISTERED order by s.studentNo")
     List<Student> withoutUniqueId(UUID orgId);

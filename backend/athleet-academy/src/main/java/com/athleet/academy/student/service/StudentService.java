@@ -124,17 +124,31 @@ public class StudentService {
         if (email != null && students.existsByOrganizationIdAndEmailIgnoreCaseAndStatusNot(orgId, email, StudentStatus.DEREGISTERED)) {
             throw new ConflictException("A student with this email already exists.");
         }
+        StudentConfig cfg = config.forOrganization(orgId);
+        if (!cfg.isUniqueIdAuto()) requireUniqueIdFree(orgId, Text.clean(req.uniqueId()), null);
+        return toResponse(register(a, req, cfg));
+    }
+
+    /**
+     * Creates and saves one Active student with its audit and history rows. The caller has already checked access, that
+     * the placement belongs to the academy, and that the e-mail and a typed Unique ID are free; the bulk import checks
+     * those for a whole file at once instead of once per student.
+     */
+    Student register(OrgAccess a, StudentRequest req, StudentConfig cfg) {
+        UUID orgId = a.organizationId();
         long studentNo = students.nextStudentNo();
         Student s = new Student(orgId, studentNo, req.centerId(), Text.clean(req.firstName()), StudentStatus.ACTIVE);
         apply(s, req);
-        StudentConfig cfg = config.forOrganization(orgId);
-        if (cfg.isUniqueIdAuto()) s.setUniqueId(StudentConfigService.generated(cfg, studentNo));
-        requireUniqueIdFree(orgId, s.getUniqueId(), null);
+        if (cfg.isUniqueIdAuto()) {
+            // A generated value can only clash with a hand-typed one that used the same text.
+            s.setUniqueId(StudentConfigService.generated(cfg, studentNo));
+            requireUniqueIdFree(orgId, s.getUniqueId(), null);
+        }
         s.replaceBatches(req.batchIds());
         students.save(s);
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "CREATE", null);
         history.record(orgId, s.getId(), a.userId(), StudentHistoryEvent.REGISTERED);
-        return toResponse(s);
+        return s;
     }
 
     /** The student's history, newest first. Same access rules as {@link #get}. */
@@ -175,13 +189,16 @@ public class StudentService {
     }
 
     Placement placement(Student s) {
-        Names n = names(List.of(s));
+        return placement(s, names(List.of(s)));
+    }
+
+    private static Placement placement(Student s, Names n) {
         return new Placement(s.getCenterId(), new HashSet<>(s.getBatchIds()), n.center(s.getCenterId()).name(),
                 n.batches(s.getBatchIds()).stream().map(NamedRef::name).collect(Collectors.joining(", ")));
     }
 
-    private void recordPlacementIfChanged(UUID orgId, UUID actorUserId, Student s, Placement before) {
-        Placement after = placement(s);
+    private void recordPlacementIfChanged(UUID orgId, UUID actorUserId, Student s, Placement before, Names now) {
+        Placement after = placement(s, now);
         if (before.centerId().equals(after.centerId()) && before.batchIds().equals(after.batchIds())) return;
         history.recordPlacementChange(orgId, s.getId(), actorUserId, before.center(), before.batches(), after.center(), after.batches());
     }
@@ -207,8 +224,9 @@ public class StudentService {
         apply(s, req);
         if (autoUniqueId) s.setUniqueId(keptUniqueId);
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "UPDATE", null);
-        recordPlacementIfChanged(orgId, a.userId(), s, before);
-        return toResponse(s);
+        Names now = names(List.of(s));
+        recordPlacementIfChanged(orgId, a.userId(), s, before, now);
+        return toResponse(s, now);
     }
 
     /** Acadware "Batches" / "Transfer Student": move the student to other batches, possibly in another class. */
@@ -222,8 +240,9 @@ public class StudentService {
         s.setCenterId(req.centerId());
         s.replaceBatches(req.batchIds());
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "CHANGE_BATCHES", null);
-        recordPlacementIfChanged(orgId, a.userId(), s, before);
-        return toResponse(s);
+        Names now = names(List.of(s));
+        recordPlacementIfChanged(orgId, a.userId(), s, before, now);
+        return toResponse(s, now);
     }
 
     /** Approves a self-registered (Submitted) student. */
@@ -325,7 +344,10 @@ public class StudentService {
     }
 
     private StudentResponse toResponse(Student s) {
-        Names n = names(List.of(s));
+        return toResponse(s, names(List.of(s)));
+    }
+
+    private StudentResponse toResponse(Student s, Names n) {
         return new StudentResponse(s.getId(), s.getStudentNo(), n.center(s.getCenterId()), n.batches(s.getBatchIds()),
                 s.getFirstName(), s.getLastName(), s.getEmail(), s.getGender(), s.getDateOfBirth(), age(s.getDateOfBirth()),
                 s.getCountryCode(), s.getMobile(), s.getUniqueId(), s.getBloodGroup(), s.getCountry(), s.getState(),

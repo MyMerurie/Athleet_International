@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import {
-  Alert, Avatar, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, IconButton, InputLabel,
+  Alert, Avatar, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, IconButton, InputLabel,
   Link, Menu, MenuItem, Select, Stack, Tab, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, Tabs, TextField,
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { api, errorMessage } from '../api/client';
@@ -17,6 +18,7 @@ import { StudentDialog } from './StudentDialog';
 import { TagsDialog } from './StudentRecords';
 import { IdCardDialog } from './StudentIdCard';
 import { TransferDialog } from './StudentTransfer';
+import { BulkDialog, ImportDialog } from './StudentBulk';
 import { StudentMonthDialog } from './attendance/StudentMonthDialog';
 import { Loading } from '../App';
 
@@ -120,9 +122,15 @@ export function StudentsPage() {
   const [cardFor, setCardFor] = useState<Student | null>(null);
   const [transferFor, setTransferFor] = useState<Student | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  // Bulk actions work on the Active and Inactive tabs; the selection belongs to the page that is on screen.
+  const selectable = manage && (status === 'ACTIVE' || status === 'INACTIVE');
 
   const active = useStudentCount(orgId, 'ACTIVE');
   const submitted = useStudentCount(orgId, 'SUBMITTED');
+  const inactive = useStudentCount(orgId, 'INACTIVE');
   const list = useQuery({
     queryKey: ['students', orgId, status, q, page, size],
     queryFn: () => api.get<Page<StudentSummary>>(`/orgs/${orgId}/students`, { status, search: q, page, size }),
@@ -161,7 +169,13 @@ export function StudentsPage() {
       <PageHeader
         title="Student"
         actions={<>
-          <SearchBox value={search} onChange={(v) => { setSearch(v); setPage(0); }} />
+          <SearchBox value={search} onChange={(v) => { setSearch(v); setPage(0); setSelected([]); }} />
+          {selectable && (
+            <Button variant="outlined" disabled={!selected.length} onClick={() => setBulkOpen(true)}>
+              Bulk action{selected.length ? ` (${selected.length})` : ''}
+            </Button>
+          )}
+          {manage && <Button startIcon={<UploadFileIcon />} onClick={() => setImportOpen(true)}>Import</Button>}
           {manage && (
             <Tooltip title="Add Student">
               <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ open: true })}>Add</Button>
@@ -169,9 +183,10 @@ export function StudentsPage() {
           )}
         </>}
       />
-      <Tabs value={status} onChange={(_, v) => { setStatus(v); setPage(0); }} sx={{ mb: 2 }}>
+      <Tabs value={status} onChange={(_, v) => { setStatus(v); setPage(0); setSelected([]); }} sx={{ mb: 2 }}>
         <Tab value="ACTIVE" label={`Active (${active.data ?? 0})`} />
         <Tab value="SUBMITTED" label={`Submitted (${submitted.data ?? 0})`} />
+        <Tab value="INACTIVE" label={`Inactive (${inactive.data ?? 0})`} />
       </Tabs>
       {actionError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>{actionError}</Alert>}
       <Panel>
@@ -180,6 +195,14 @@ export function StudentsPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
+                  {selectable && (
+                    <TableCell padding="checkbox">
+                      <Checkbox size="small" inputProps={{ 'aria-label': 'Select all students on this page' }}
+                        checked={list.data.items.length > 0 && list.data.items.every((s) => selected.includes(s.id))}
+                        indeterminate={selected.length > 0 && !list.data.items.every((s) => selected.includes(s.id))}
+                        onChange={(e) => setSelected(e.target.checked ? list.data!.items.map((s) => s.id) : [])} />
+                    </TableCell>
+                  )}
                   <TableCell /><TableCell>Student Name</TableCell><TableCell>ID</TableCell><TableCell>{centerLabel} Name</TableCell>
                   <TableCell>Batch</TableCell><TableCell>Age</TableCell><TableCell>Grade</TableCell><TableCell>Email Address</TableCell>
                   <TableCell align="right">Actions</TableCell>
@@ -187,7 +210,13 @@ export function StudentsPage() {
               </TableHead>
               <TableBody>
                 {list.data.items.map((s) => (
-                  <TableRow key={s.id} hover>
+                  <TableRow key={s.id} hover selected={selected.includes(s.id)}>
+                    {selectable && (
+                      <TableCell padding="checkbox">
+                        <Checkbox size="small" inputProps={{ 'aria-label': `Select ${s.firstName}` }} checked={selected.includes(s.id)}
+                          onChange={(e) => setSelected((cur) => (e.target.checked ? [...cur, s.id] : cur.filter((x) => x !== s.id)))} />
+                      </TableCell>
+                    )}
                     <TableCell><Avatar sx={{ width: 32, height: 32, fontSize: 14 }}>{s.firstName[0]}</Avatar></TableCell>
                     <TableCell>
                       <Link component={RouterLink} to={`/org/${orgId}/students/${s.id}`} underline="hover" color="inherit">
@@ -214,8 +243,8 @@ export function StudentsPage() {
           </Box>
         )}
         <TablePagination component="div" count={list.data?.total ?? 0} page={page} rowsPerPage={size}
-          rowsPerPageOptions={[5, 10, 20]} onPageChange={(_, p) => setPage(p)}
-          onRowsPerPageChange={(e) => { setSize(parseInt(e.target.value, 10)); setPage(0); }} />
+          rowsPerPageOptions={[5, 10, 20]} onPageChange={(_, p) => { setPage(p); setSelected([]); }}
+          onRowsPerPageChange={(e) => { setSize(parseInt(e.target.value, 10)); setPage(0); setSelected([]); }} />
       </Panel>
 
       <Menu anchorEl={menu?.el} open={!!menu} onClose={() => setMenu(null)}>
@@ -239,6 +268,9 @@ export function StudentsPage() {
       <TagsDialog student={tagsFor} onClose={() => setTagsFor(null)} />
       <IdCardDialog student={cardFor} onClose={() => setCardFor(null)} />
       <TransferDialog student={transferFor} onClose={() => setTransferFor(null)} />
+      <BulkDialog open={bulkOpen} status={status} ids={selected} onClose={() => setBulkOpen(false)}
+        onDone={() => { setBulkOpen(false); setSelected([]); }} />
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </>
   );
 }

@@ -92,6 +92,8 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
     throw new ApiError(res.status, code, message, fields);
   }
   if (res.status === 204) return undefined as T;
+  // A CSV file (the import template) comes back as a file, everything else as JSON.
+  if ((res.headers.get('content-type') ?? '').startsWith('text/csv')) return (await res.blob()) as T;
   return (await res.json()) as T;
 }
 
@@ -100,6 +102,7 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   upload: <T>(path: string, form: FormData) => request<T>('POST', path, form),
+  download: (path: string) => request<Blob>('GET', path),
   del: <T = void>(path: string) => request<T>('DELETE', path),
 };
 
