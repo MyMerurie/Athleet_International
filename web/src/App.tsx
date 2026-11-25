@@ -9,10 +9,12 @@ import { OrgSelectorPage } from './pages/OrgSelectorPage';
 import { Shell } from './components/Shell';
 import { DashboardPage } from './pages/DashboardPage';
 import { StudentsPage } from './pages/StudentsPage';
+import { StudentProfilePage } from './pages/StudentProfilePage';
 import { ClassesPage } from './pages/ClassesPage';
 import { RolesPage } from './pages/RolesPage';
 import { StaffPage } from './pages/StaffPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AttendancePage } from './pages/AttendancePage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 
 export function Loading() {
@@ -42,6 +44,8 @@ export function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="students" element={<StudentsPage />} />
+        <Route path="students/:studentId" element={<StudentProfilePage />} />
+        <Route path="attendance" element={<AttendancePage />} />
         <Route path="classes" element={<ClassesPage />} />
         <Route path="roles" element={<RolesPage />} />
         <Route path="staff" element={<StaffPage />} />

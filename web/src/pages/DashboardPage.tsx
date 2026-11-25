@@ -10,6 +10,7 @@ import { useOrg } from '../org/OrgContext';
 import { isPrimaryView } from '../components/Shell';
 import { Loading } from '../App';
 import { Panel } from '../components/common';
+import { AttendanceDashboard } from './attendance/AttendanceDashboard';
 
 function Kpi({ label, value }: { label: string; value: string | number }) {
   return (
@@ -140,7 +141,7 @@ function Utilization({ d, groupLabel }: { d: GeneralDashboard; groupLabel: strin
 }
 
 export function DashboardPage() {
-  const { orgId, access, centerLabel } = useOrg();
+  const { orgId, access, can, centerLabel } = useOrg();
   const primary = isPrimaryView(access);
   const [tab, setTab] = useState(0);
   const [sub, setSub] = useState(0);
@@ -163,7 +164,9 @@ export function DashboardPage() {
             : sub === 0 ? <Headcount d={data} groupLabel={centerLabel} /> : <Utilization d={data} groupLabel={centerLabel} />}
         </>
       )}
-      {tab > 0 && <Alert severity="info">Attendance and performance dashboards arrive with the attendance and assessment modules.</Alert>}
+      {tab === 1 && can('ATTENDANCE') && <AttendanceDashboard />}
+      {tab === 1 && !can('ATTENDANCE') && <Alert severity="info">You do not have access to attendance.</Alert>}
+      {tab === 2 && <Alert severity="info">The performance dashboard arrives with the assessment module.</Alert>}
     </>
   );
 }

@@ -1,15 +1,60 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, CardContent, Grid2 as Grid, List, ListItemButton, ListItemText, MenuItem, TextField, Typography } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Alert, Button, Card, CardContent, FormControlLabel, Grid2 as Grid, List, ListItemButton, ListItemText, MenuItem, Stack, Switch,
+  TextField, Typography,
+} from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, fieldErrors } from '../api/client';
 import { useOrg } from '../org/OrgContext';
 import { PageHeader } from '../components/common';
+import type { AttendanceConfig } from '../api/types';
+import { Loading } from '../App';
 
 const SECTIONS = [
   'Branding Preference', 'Mobile Apps', 'Notifications', 'Social Media Handles', 'Terms & Conditions',
   'Dashboard Configuration', 'Attendance Configuration', 'Fee Settings', 'Cascade Activities', 'Activity Categories',
   'Competition / Rank Master', 'Player Unique ID Auto-generation', 'Student Rating Categories',
 ];
+
+function AttendanceConfigForm({ manage }: { manage: boolean }) {
+  const { orgId } = useOrg();
+  const qc = useQueryClient();
+  const [v, setV] = useState<AttendanceConfig | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const q = useQuery({ queryKey: ['att-config', orgId], queryFn: () => api.get<AttendanceConfig>(`/orgs/${orgId}/attendance/config`) });
+  useEffect(() => { if (q.data) setV(q.data); }, [q.data]);
+  const save = useMutation({
+    mutationFn: () => api.put<AttendanceConfig>(`/orgs/${orgId}/attendance/config`, v),
+    onSuccess: (r) => { qc.setQueryData(['att-config', orgId], r); setMsg({ ok: true, text: 'Saved.' }); },
+    onError: (e) => setMsg({ ok: false, text: errorMessage(e) }),
+  });
+  if (q.isLoading) return <Loading />;
+  if (!v) return <Alert severity="error">{errorMessage(q.error)}</Alert>;
+  const sw = (key: 'selfieRequired' | 'tasksOnOut' | 'showDeviceInfo' | 'allowDateOverride', label: string) => (
+    <FormControlLabel label={label} control={<Switch checked={v[key]} disabled={!manage} onChange={(e) => setV({ ...v, [key]: e.target.checked })} />} />
+  );
+  const num = (key: 'maxBackDays' | 'maxForwardDays', label: string, max: number) => (
+    <TextField type="number" label={label} value={v[key]} disabled={!manage} sx={{ width: 200 }}
+      inputProps={{ min: 0, max }} helperText={`0 to ${max}`}
+      onChange={(e) => setV({ ...v, [key]: Math.min(max, Math.max(0, parseInt(e.target.value || '0', 10) || 0)) })} />
+  );
+  return (
+    <Stack spacing={1}>
+      {msg && <Alert severity={msg.ok ? 'success' : 'error'} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      {sw('selfieRequired', 'Selfie required when punching in or out')}
+      {sw('tasksOnOut', 'Tasks accomplished required with the out punch')}
+      {sw('showDeviceInfo', 'Show device info (phone, device id) on staff attendance')}
+      {sw('allowDateOverride', 'Allow backdated / forward-dated student attendance')}
+      {v.allowDateOverride && (
+        <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
+          {num('maxBackDays', 'Days back', 31)}
+          {num('maxForwardDays', 'Days forward', 7)}
+        </Stack>
+      )}
+      {manage && <div><Button variant="contained" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button></div>}
+    </Stack>
+  );
+}
 
 export function SettingsPage() {
   const { orgId, access, can } = useOrg();
@@ -47,7 +92,7 @@ export function SettingsPage() {
           <Card variant="outlined">
             <CardContent>
               <Typography variant="h6" gutterBottom>{section}</Typography>
-              {section !== 'Branding Preference' ? (
+              {section === 'Attendance Configuration' ? <AttendanceConfigForm manage={manage} /> : section !== 'Branding Preference' ? (
                 <Alert severity="info">
                   {section === 'Fee Settings' ? 'Fees are scheduled for the final phase.' : 'This setting will be added in a later phase.'}
                 </Alert>

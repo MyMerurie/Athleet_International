@@ -3,6 +3,7 @@ package com.athleet.academy.student.web;
 import com.athleet.academy.student.domain.StudentStatus;
 import com.athleet.academy.student.dto.StudentDtos.ChangeBatchesRequest;
 import com.athleet.academy.student.dto.StudentDtos.DeregisterRequest;
+import com.athleet.academy.student.dto.StudentDtos.StudentProfile;
 import com.athleet.academy.student.dto.StudentDtos.StudentRequest;
 import com.athleet.academy.student.dto.StudentDtos.StudentResponse;
 import com.athleet.academy.student.dto.StudentDtos.StudentSummary;
@@ -50,6 +51,11 @@ public class StudentController {
     @GetMapping("/{studentId}")
     public StudentResponse get(@PathVariable UUID orgId, @PathVariable UUID studentId) {
         return students.get(orgId, studentId);
+    }
+
+    @GetMapping("/{studentId}/profile")
+    public StudentProfile profile(@PathVariable UUID orgId, @PathVariable UUID studentId) {
+        return students.profile(orgId, studentId);
     }
 
     @PostMapping

@@ -19,12 +19,15 @@ import ChatIcon from '@mui/icons-material/Chat';
 import ArticleIcon from '@mui/icons-material/Article';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SportsIcon from '@mui/icons-material/SportsSoccer';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { OrgProvider, useMyAccess, useOrgIdParam } from '../org/OrgContext';
 import type { AppModule, MyAccess } from '../api/types';
 import { SIDEBAR_ACTIVE, SIDEBAR_BG, SIDEBAR_TEXT } from '../theme';
 import { Loading } from '../App';
+import { MyAttendanceDialog } from './MyAttendanceDialog';
 
 const DRAWER = 220;
 
@@ -41,6 +44,7 @@ function navItems(centerLabel: string): NavItem[] {
   return [
     { module: 'DASHBOARD', label: 'Dashboard', path: 'dashboard', icon: <DashboardIcon />, primaryView: true },
     { module: 'STUDENT', label: 'Student', path: 'students', icon: <SchoolIcon />, primaryView: true },
+    { module: 'ATTENDANCE', label: 'Attendance', path: 'attendance', icon: <EventAvailableIcon />, primaryView: false },
     { module: 'CENTER', label: centerLabel, path: 'classes', icon: <MeetingRoomIcon />, primaryView: false },
     { module: 'ROLE', label: 'Roles', path: 'roles', icon: <AdminPanelSettingsIcon />, primaryView: false },
     { module: 'STAFF', label: 'Staff', path: 'staff', icon: <BadgeIcon />, primaryView: true },
@@ -65,6 +69,7 @@ function Layout({ access }: { access: MyAccess }) {
   const desktop = useMediaQuery(theme.breakpoints.up('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
+  const [myAttendance, setMyAttendance] = useState(false);
   const org = access.organization;
   const primary = isPrimaryView(access);
   const rank = { NONE: 0, VIEW: 1, MANAGE: 2 } as const;
@@ -120,6 +125,9 @@ function Layout({ access }: { access: MyAccess }) {
               <IconButton color="inherit" onClick={() => navigate('settings')} aria-label="Settings"><SettingsIcon /></IconButton>
             </Tooltip>
           )}
+          <Tooltip title="My attendance">
+            <IconButton color="inherit" onClick={() => setMyAttendance(true)} aria-label="My attendance"><AccessTimeIcon /></IconButton>
+          </Tooltip>
           <Tooltip title="Notifications">
             <IconButton color="inherit" aria-label="Notifications"><NotificationsIcon /></IconButton>
           </Tooltip>
@@ -134,6 +142,7 @@ function Layout({ access }: { access: MyAccess }) {
           </Menu>
         </Toolbar>
       </AppBar>
+      <MyAttendanceDialog open={myAttendance} onClose={() => setMyAttendance(false)} />
       <Box component="nav" sx={{ width: { md: DRAWER }, flexShrink: { md: 0 } }}>
         <Drawer
           variant={desktop ? 'permanent' : 'temporary'}

@@ -20,12 +20,12 @@ Done and merged to `main`:
 | Access | Roles (Head Office / Class types) with a per-module permission matrix (`AppModule` × `AccessLevel`), center-scoped roles |
 | Staff | List, invite, edit, role assignment |
 | Classes | Centers ("Class", label configurable), batches with training days, timings, coaches and capacity |
-| Students | Active / Submitted tabs, add/edit (step 1 fields only), change batches, approve self-registrations, deregister; auto student number. Row menu: Edit, Batches, Transfer Student, Deregistration work; ID Card, Attendance, Tag Student, Injury Log, Student History show "(coming soon)" |
-| Dashboard | General tab only (Headcount, Utilization). The Attendance and Performance tabs show an info message |
-| Settings | Branding Preference only (center label, currency, date format). Every other settings section is a placeholder |
-| Web admin | React screens for all of the above; other sidebar items open a "Coming soon" page (`/org/:orgId/soon/:module`) |
+| Students | Active / Submitted tabs, add/edit (step 1 fields only), change batches, approve self-registrations, deregister; auto student number. Row menu: Edit, Batches, Transfer Student, Deregistration and Attendance (month view) work; ID Card, Tag Student, Injury Log, Student History show "(coming soon)" |
+| Dashboard | General (Headcount, Utilization) and Attendance (Live, Tracker) tabs. The Performance tab shows an info message |
+| Settings | Branding Preference (center label, currency, date format) and Attendance Configuration. Every other settings section is a placeholder |
+| Web admin | React screens for all of the above, plus the Attendance page (mark students, approvals, staff in/out) and a My attendance punch dialog in the top bar; other sidebar items open a "Coming soon" page (`/org/:orgId/soon/:module`) |
 
-On branch `feature/attendance` (backend done and smoke-tested through the API, **no attendance screens yet**):
+Attendance (Phase 1: backend smoke-tested through the API, screens built and checked in the browser):
 
 | Area | What exists |
 |---|---|
@@ -36,8 +36,8 @@ On branch `feature/attendance` (backend done and smoke-tested through the API, *
 | Reports (API) | Live attendance (per academy or class), tracker grid (staff or students, max 31 days), one student's month |
 | File storage | Core `FileStorage` (local disk in dev, S3 later), validated and re-encoded uploads (EXIF stripped), short-lived signed download links |
 
-Still to build for Phase 1: the screens (mark and approve sessions, My attendance punch, Dashboard → Attendance tab,
-Settings → Attendance Configuration form, student row action "Attendance"). The API is ready for them.
+Known gaps in the screens: a Center Manager cannot pick a person for "Add shift" because the staff list needs Staff access
+(an attendance-scoped staff list would fix it), and the selfie is a plain file input (the mobile apps do the real camera capture).
 
 Notes on what "done" means here:
 - **Transfer Student** currently opens the same dialog as **Batches**: it moves a student between centers and batches
@@ -53,7 +53,7 @@ Not done yet: everything listed in Section 4, plus the items in Section 5.
 
 Follow **Run locally** in the [README](README.md). In short:
 
-1. Install JDK 21, Maven 3.9+, Node 20+, PostgreSQL 16.
+1. Install JDK 17, Maven 3.9+, Node 20+, PostgreSQL 16.
 2. Create a database, then copy `backend/.env.example` to `backend/.env` and fill it in. `.env` is git-ignored;
    **never commit real secrets.** Set `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` for the first start only.
 3. Backend: `cd backend && mvn clean package`, then run `athleet-app/target/athleet-app-0.0.1-SNAPSHOT.jar`.
@@ -61,9 +61,9 @@ Follow **Run locally** in the [README](README.md). In short:
 4. Web: `cd web && npm install && npm run dev` → http://localhost:5173.
 
 Gotchas:
-- Maven must run on **JDK 21**. `java -version` can say 21 while Maven still uses another JDK, because Maven reads
-  `JAVA_HOME`. Check with `mvn -v`. The build now stops with "Athleet needs JDK 21 or newer" if it is wrong; set
-  `JAVA_HOME` to the JDK 21 folder (PowerShell: `$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21...'`).
+- Maven must run on **JDK 17 or newer**. `java -version` can say 17 while Maven still uses another JDK, because Maven
+  reads `JAVA_HOME`. Check with `mvn -v`. The build stops with "Athleet needs JDK 17 or newer" if the JDK is older; set
+  `JAVA_HOME` to a JDK 17 folder (PowerShell: `$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17...'`).
 - In the `dev` profile, invite and reset links are written to the backend log instead of being emailed.
 - Stop the running backend before rebuilding on Windows, or the jar stays locked.
 - File uploads (attendance selfies) need `STORAGE_URL_SECRET` in `backend/.env` (at least 32 random characters). The
@@ -117,10 +117,9 @@ Each item maps to an `AppModule` value and to a section of the inventory. "Done 
 - [x] **Student attendance** (API): mark per batch session, with approval.
 - [x] **Attendance Configuration** settings (API, inventory §10).
 - [x] **Live Attendance and Attendance Tracker** (API).
-- [ ] **Screens**: Attendance page (mark students, approvals, staff in/out), My attendance (punch with selfie),
+- [x] **Screens**: Attendance page (mark students, approvals, staff in/out), My attendance (punch with selfie),
   Dashboard → Attendance tab (Live + Tracker), Settings → Attendance Configuration form, student row action "Attendance".
 - Done when: a coach can mark a batch, an admin sees it on the dashboard and tracker, and config rules are enforced server-side.
-  The rules and the data are done; the screens are what remains.
 - Known limits: the time zone is fixed to Asia/Kolkata (add `organization.timezone` for other regions), the
   configuration is per organization (affiliates do not inherit it), and absence alerts are not sent yet (hook:
   `AttendanceSessionApproved` event).

@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, IconButton, InputLabel,
-  Menu, MenuItem, Select, Stack, Tab, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, Tabs, TextField,
+  Link, Menu, MenuItem, Select, Stack, Tab, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, Tabs, TextField,
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { api, errorMessage } from '../api/client';
 import type { Page, Student, StudentStatus, StudentSummary } from '../api/types';
 import { useOrg } from '../org/OrgContext';
 import { EmptyState, PageHeader, Panel, SearchBox, useDebounced } from '../components/common';
 import { useBatchOptions, useCenterOptions } from '../components/options';
 import { StudentDialog } from './StudentDialog';
+import { StudentMonthDialog } from './attendance/StudentMonthDialog';
 import { Loading } from '../App';
 
-const LATER = ['ID Card', 'Attendance', 'Tag Student', 'Injury Log', 'Student History'];
+const LATER = ['ID Card', 'Tag Student', 'Injury Log', 'Student History'];
 
 function useStudentCount(orgId: string, status: StudentStatus) {
   return useQuery({
@@ -100,7 +102,9 @@ function DeregisterDialog({ student, onClose }: { student: StudentSummary | null
 export function StudentsPage() {
   const { orgId, can, centerLabel } = useOrg();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const manage = can('STUDENT', 'MANAGE');
+  const viewAttendance = can('ATTENDANCE');
   const [status, setStatus] = useState<StudentStatus>('ACTIVE');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -110,6 +114,7 @@ export function StudentsPage() {
   const [menu, setMenu] = useState<{ el: HTMLElement; row: StudentSummary } | null>(null);
   const [batchesFor, setBatchesFor] = useState<Student | null>(null);
   const [deregFor, setDeregFor] = useState<StudentSummary | null>(null);
+  const [attendanceFor, setAttendanceFor] = useState<StudentSummary | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const active = useStudentCount(orgId, 'ACTIVE');
@@ -131,10 +136,12 @@ export function StudentsPage() {
     setMenu(null);
     setActionError(null);
     try {
+      if (action === 'profile') navigate(`/org/${orgId}/students/${row.id}`);
       if (action === 'edit') setDialog({ open: true, student: await loadFull(row.id) });
       if (action === 'batches') setBatchesFor(await loadFull(row.id));
       if (action === 'deregister') setDeregFor(row);
       if (action === 'approve') approve.mutate(row.id);
+      if (action === 'attendance') setAttendanceFor(row);
     } catch (e) {
       setActionError(errorMessage(e));
     }
@@ -173,7 +180,11 @@ export function StudentsPage() {
                 {list.data.items.map((s) => (
                   <TableRow key={s.id} hover>
                     <TableCell><Avatar sx={{ width: 32, height: 32, fontSize: 14 }}>{s.firstName[0]}</Avatar></TableCell>
-                    <TableCell>{s.firstName} {s.lastName ?? ''}</TableCell>
+                    <TableCell>
+                      <Link component={RouterLink} to={`/org/${orgId}/students/${s.id}`} underline="hover" color="inherit">
+                        {s.firstName} {s.lastName ?? ''}
+                      </Link>
+                    </TableCell>
                     <TableCell>{s.studentNo}</TableCell>
                     <TableCell>{s.center.name}</TableCell>
                     <TableCell>{s.batches.map((b) => b.name).join(', ')}</TableCell>
@@ -181,7 +192,7 @@ export function StudentsPage() {
                     <TableCell>{s.grade ?? '—'}</TableCell>
                     <TableCell sx={{ wordBreak: 'break-all' }}>{s.email ?? '—'}</TableCell>
                     <TableCell align="right">
-                      {manage && (
+                      {(manage || viewAttendance) && (
                         <IconButton size="small" aria-label="Select Action" onClick={(e) => setMenu({ el: e.currentTarget, row: s })}>
                           <MoreVertIcon fontSize="small" />
                         </IconButton>
@@ -199,17 +210,20 @@ export function StudentsPage() {
       </Panel>
 
       <Menu anchorEl={menu?.el} open={!!menu} onClose={() => setMenu(null)}>
-        {menu?.row.status === 'SUBMITTED' && <MenuItem onClick={() => act('approve', menu.row)}>Approve</MenuItem>}
-        <MenuItem onClick={() => menu && act('edit', menu.row)}>Edit</MenuItem>
-        <MenuItem onClick={() => menu && act('batches', menu.row)}>Batches</MenuItem>
-        <MenuItem onClick={() => menu && act('batches', menu.row)}>Transfer Student</MenuItem>
-        <MenuItem onClick={() => menu && act('deregister', menu.row)}>Deregistration</MenuItem>
-        {LATER.map((l) => <MenuItem key={l} disabled>{l} (coming soon)</MenuItem>)}
+        <MenuItem onClick={() => menu && act('profile', menu.row)}>Profile</MenuItem>
+        {manage && menu?.row.status === 'SUBMITTED' && <MenuItem onClick={() => act('approve', menu.row)}>Approve</MenuItem>}
+        {manage && <MenuItem onClick={() => menu && act('edit', menu.row)}>Edit</MenuItem>}
+        {manage && <MenuItem onClick={() => menu && act('batches', menu.row)}>Batches</MenuItem>}
+        {manage && <MenuItem onClick={() => menu && act('batches', menu.row)}>Transfer Student</MenuItem>}
+        {manage && <MenuItem onClick={() => menu && act('deregister', menu.row)}>Deregistration</MenuItem>}
+        {viewAttendance && <MenuItem onClick={() => menu && act('attendance', menu.row)}>Attendance</MenuItem>}
+        {manage && LATER.map((l) => <MenuItem key={l} disabled>{l} (coming soon)</MenuItem>)}
       </Menu>
 
       <StudentDialog open={dialog.open} student={dialog.student} onClose={() => setDialog({ open: false })} />
       <BatchesDialog student={batchesFor} onClose={() => setBatchesFor(null)} />
       <DeregisterDialog student={deregFor} onClose={() => setDeregFor(null)} />
+      <StudentMonthDialog student={attendanceFor} onClose={() => setAttendanceFor(null)} />
     </>
   );
 }

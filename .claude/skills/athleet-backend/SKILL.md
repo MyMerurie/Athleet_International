@@ -24,7 +24,7 @@ primary organization (e.g. AJSDP)            organization.parent_id = null
 
 ## Stack
 
-- Java 21, Spring Boot 3.x, Maven multi-module build
+- Java 17, Spring Boot 3.x, Maven multi-module build
 - PostgreSQL (installed locally for development; no Docker), Flyway migrations
 - Spring Security with our own JWT (short-lived access token + refresh token)
 - S3-compatible file storage (local folder in dev, AWS S3 Mumbai in prod)
@@ -34,7 +34,7 @@ primary organization (e.g. AJSDP)            organization.parent_id = null
 ## Module layout
 
 Maven multi-module: `backend/pom.xml` is the parent (Spring Boot parent, shared versions);
-each module has its own `pom.xml`. Build from `backend/` with `mvn clean package` (needs JDK 21 on `JAVA_HOME`).
+each module has its own `pom.xml`. Build from `backend/` with `mvn clean package` (needs JDK 17 or newer on `JAVA_HOME`).
 
 ```
 backend/

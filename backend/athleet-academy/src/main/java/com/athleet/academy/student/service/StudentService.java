@@ -6,12 +6,17 @@ import com.athleet.academy.center.repository.BatchRepository;
 import com.athleet.academy.center.repository.CenterRepository;
 import com.athleet.academy.common.Text;
 import com.athleet.academy.student.domain.Student;
+import com.athleet.academy.student.domain.StudentContact;
 import com.athleet.academy.student.domain.StudentStatus;
 import com.athleet.academy.student.dto.StudentDtos.ChangeBatchesRequest;
+import com.athleet.academy.student.dto.StudentDtos.ContactRequest;
+import com.athleet.academy.student.dto.StudentDtos.ContactResponse;
 import com.athleet.academy.student.dto.StudentDtos.NamedRef;
+import com.athleet.academy.student.dto.StudentDtos.StudentProfile;
 import com.athleet.academy.student.dto.StudentDtos.StudentRequest;
 import com.athleet.academy.student.dto.StudentDtos.StudentResponse;
 import com.athleet.academy.student.dto.StudentDtos.StudentSummary;
+import com.athleet.academy.student.dto.StudentDtos.TrainingDay;
 import com.athleet.academy.student.repository.StudentRepository;
 import com.athleet.core.audit.service.AuditService;
 import com.athleet.core.common.error.BusinessRuleException;
@@ -31,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -84,6 +90,20 @@ public class StudentService {
     public StudentResponse get(UUID orgId, UUID studentId) {
         OrgAccess a = access.require(orgId, AppModule.STUDENT, AccessLevel.VIEW);
         return toResponse(load(a, studentId));
+    }
+
+    /** The student plus the weekly training slots of their batches. Same access rules as {@link #get}. */
+    @Transactional(readOnly = true)
+    public StudentProfile profile(UUID orgId, UUID studentId) {
+        OrgAccess a = access.require(orgId, AppModule.STUDENT, AccessLevel.VIEW);
+        Student s = load(a, studentId);
+        List<TrainingDay> days = s.getBatchIds().isEmpty() ? List.of() : batches.findAllByIdIn(s.getBatchIds()).stream()
+                .flatMap(b -> b.getSlots().stream()
+                        .map(sl -> new TrainingDay(new NamedRef(b.getId(), b.getName()), sl.getDayOfWeek(), sl.getStartTime(), sl.getEndTime())))
+                .sorted(Comparator.comparing(TrainingDay::day).thenComparing(TrainingDay::startTime)
+                        .thenComparing(d -> d.batch().name()))
+                .toList();
+        return new StudentProfile(toResponse(s), days);
     }
 
     @Transactional
@@ -201,6 +221,15 @@ public class StudentService {
         s.setGrade(Text.clean(r.grade()));
         s.setDominantSide(r.dominantSide());
         s.setMedicalCondition(Text.clean(r.medicalCondition()));
+        s.setKitSize(Text.clean(r.kitSize()));
+        if (r.contacts() != null) {
+            List<StudentContact> next = new ArrayList<>();
+            for (ContactRequest c : r.contacts()) {
+                next.add(new StudentContact(s.getOrganizationId(), Text.clean(c.name()), Text.clean(c.relationship()),
+                        Text.clean(c.countryCode()), Text.clean(c.mobile()), normalizeEmail(c.email()), next.size()));
+            }
+            s.replaceContacts(next);
+        }
     }
 
     private static String normalizeEmail(String email) {
@@ -218,7 +247,10 @@ public class StudentService {
                 s.getFirstName(), s.getLastName(), s.getEmail(), s.getGender(), s.getDateOfBirth(), age(s.getDateOfBirth()),
                 s.getCountryCode(), s.getMobile(), s.getUniqueId(), s.getBloodGroup(), s.getCountry(), s.getState(),
                 s.getCity(), s.getAddress(), s.getPinCode(), s.getSchoolName(), s.getSchoolAddress(), s.getGrade(),
-                s.getDominantSide(), s.getMedicalCondition(), s.getStatus());
+                s.getDominantSide(), s.getMedicalCondition(), s.getKitSize(),
+                s.getContacts().stream().map(c -> new ContactResponse(c.getName(), c.getRelationship(), c.getCountryCode(),
+                        c.getMobile(), c.getEmail())).toList(),
+                s.getStatus());
     }
 
     /** Resolves class and batch names for a page of students with two queries. */

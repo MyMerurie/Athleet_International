@@ -1,6 +1,7 @@
 package com.athleet.academy.student.domain;
 
 import com.athleet.core.common.persistence.BaseEntity;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -8,11 +9,15 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -58,6 +63,12 @@ public class Student extends BaseEntity {
     private String grade;
     @Enumerated(EnumType.STRING) @Column(name = "dominant_side") private DominantSide dominantSide;
     @Column(name = "medical_condition") private String medicalCondition;
+    @Column(name = "kit_size") private String kitSize;
+
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "student_id", nullable = false)
+    @OrderBy("sortOrder")
+    private List<StudentContact> contacts = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -80,6 +91,11 @@ public class Student extends BaseEntity {
     public void replaceBatches(Set<UUID> next) {
         batchIds.clear();
         batchIds.addAll(next);
+    }
+
+    public void replaceContacts(List<StudentContact> next) {
+        contacts.clear();
+        contacts.addAll(next);
     }
 
     public void deregister(String reason) {
@@ -133,6 +149,9 @@ public class Student extends BaseEntity {
     public void setDominantSide(DominantSide dominantSide) { this.dominantSide = dominantSide; }
     public String getMedicalCondition() { return medicalCondition; }
     public void setMedicalCondition(String medicalCondition) { this.medicalCondition = medicalCondition; }
+    public String getKitSize() { return kitSize; }
+    public void setKitSize(String kitSize) { this.kitSize = kitSize; }
+    public List<StudentContact> getContacts() { return contacts; }
     public StudentStatus getStatus() { return status; }
     public void setStatus(StudentStatus status) { this.status = status; }
     public Instant getDeregisteredAt() { return deregisteredAt; }

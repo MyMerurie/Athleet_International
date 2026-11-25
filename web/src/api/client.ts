@@ -64,12 +64,13 @@ function buildUrl(path: string, query?: Query) {
 
 async function request<T>(method: string, path: string, body?: unknown, query?: Query, retry = true): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'; // FormData sets its own multipart boundary
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const res = await fetch(buildUrl(path, query), {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     credentials: 'same-origin',
   });
   if (res.status === 401 && retry && !path.startsWith('/auth/')) {
@@ -98,6 +99,7 @@ export const api = {
   get: <T>(path: string, query?: Query) => request<T>('GET', path, undefined, query),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
+  upload: <T>(path: string, form: FormData) => request<T>('POST', path, form),
   del: <T = void>(path: string) => request<T>('DELETE', path),
 };
 
@@ -107,6 +109,11 @@ export function fieldErrors(e: unknown): Record<string, string> {
   return Object.fromEntries(e.fields.map((f) => [f.field, f.message]));
 }
 
+export function isStale(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 409 && e.code === 'STALE_DATA';
+}
+
 export function errorMessage(e: unknown): string {
+  if (isStale(e)) return 'This record was changed by someone else. It has been reloaded; please try again.';
   return e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
 }
