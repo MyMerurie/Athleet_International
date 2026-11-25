@@ -3,11 +3,17 @@ package com.athleet.academy.student.web;
 import com.athleet.academy.student.domain.StudentStatus;
 import com.athleet.academy.student.dto.StudentDtos.ChangeBatchesRequest;
 import com.athleet.academy.student.dto.StudentDtos.DeregisterRequest;
+import com.athleet.academy.student.dto.StudentDtos.HistoryEventResponse;
 import com.athleet.academy.student.dto.StudentDtos.StudentProfile;
 import com.athleet.academy.student.dto.StudentDtos.StudentRequest;
 import com.athleet.academy.student.dto.StudentDtos.StudentResponse;
 import com.athleet.academy.student.dto.StudentDtos.StudentSummary;
+import com.athleet.academy.student.dto.StudentDtos.TagsRequest;
+import com.athleet.academy.student.dto.StudentDtos.TransferRequest;
+import com.athleet.academy.student.dto.StudentDtos.TransferResult;
+import com.athleet.academy.student.dto.StudentDtos.TransferTarget;
 import com.athleet.academy.student.service.StudentService;
+import com.athleet.academy.student.service.StudentTransferService;
 import com.athleet.core.common.paging.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
@@ -23,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -31,9 +38,11 @@ import java.util.UUID;
 public class StudentController {
 
     private final StudentService students;
+    private final StudentTransferService transfers;
 
-    public StudentController(StudentService students) {
+    public StudentController(StudentService students, StudentTransferService transfers) {
         this.students = students;
+        this.transfers = transfers;
     }
 
     @GetMapping
@@ -56,6 +65,26 @@ public class StudentController {
     @GetMapping("/{studentId}/profile")
     public StudentProfile profile(@PathVariable UUID orgId, @PathVariable UUID studentId) {
         return students.profile(orgId, studentId);
+    }
+
+    @GetMapping("/transfer-targets")
+    public List<TransferTarget> transferTargets(@PathVariable UUID orgId) {
+        return transfers.targets(orgId);
+    }
+
+    @PostMapping("/{studentId}/transfer")
+    public TransferResult transfer(@PathVariable UUID orgId, @PathVariable UUID studentId, @Valid @RequestBody TransferRequest req) {
+        return transfers.transfer(orgId, studentId, req);
+    }
+
+    @GetMapping("/{studentId}/history")
+    public List<HistoryEventResponse> history(@PathVariable UUID orgId, @PathVariable UUID studentId) {
+        return students.history(orgId, studentId);
+    }
+
+    @PutMapping("/{studentId}/tags")
+    public List<String> tags(@PathVariable UUID orgId, @PathVariable UUID studentId, @Valid @RequestBody TagsRequest req) {
+        return students.replaceTags(orgId, studentId, req);
     }
 
     @PostMapping

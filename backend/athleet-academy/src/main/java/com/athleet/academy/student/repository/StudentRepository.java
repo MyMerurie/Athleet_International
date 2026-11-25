@@ -54,6 +54,16 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
 
     boolean existsByOrganizationIdAndEmailIgnoreCaseAndStatusNot(UUID orgId, String email, StudentStatus status);
 
+    boolean existsByOrganizationIdAndUniqueIdIgnoreCaseAndStatusNot(UUID orgId, String uniqueId, StudentStatus status);
+
+    /** Students that still need a generated Unique ID. */
+    @Query("select s from Student s where s.organizationId = :orgId and s.uniqueId is null and s.status <> com.athleet.academy.student.domain.StudentStatus.DEREGISTERED order by s.studentNo")
+    List<Student> withoutUniqueId(UUID orgId);
+
+    /** Lower-cased Unique IDs in use, so generated ones never collide with hand-typed ones. */
+    @Query("select lower(s.uniqueId) from Student s where s.organizationId = :orgId and s.uniqueId is not null")
+    List<String> uniqueIdsInUse(UUID orgId);
+
     @Query("select s.centerId, count(s) from Student s where s.centerId in :centerIds and s.status = com.athleet.academy.student.domain.StudentStatus.ACTIVE group by s.centerId")
     List<Object[]> activeCountByCenterRows(Collection<UUID> centerIds);
 

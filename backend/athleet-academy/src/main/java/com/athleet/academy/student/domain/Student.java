@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -25,7 +26,7 @@ import java.util.UUID;
 @Table(name = "student")
 public class Student extends BaseEntity {
 
-    @Column(name = "organization_id", nullable = false, updatable = false)
+    @Column(name = "organization_id", nullable = false)
     private UUID organizationId;
 
     /** Human-readable student ID shown in the list (per organization). */
@@ -65,6 +66,11 @@ public class Student extends BaseEntity {
     @Column(name = "medical_condition") private String medicalCondition;
     @Column(name = "kit_size") private String kitSize;
 
+    @ElementCollection
+    @CollectionTable(name = "student_tag", joinColumns = @JoinColumn(name = "student_id"))
+    @Column(name = "tag")
+    private Set<String> tags = new HashSet<>();
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "student_id", nullable = false)
     @OrderBy("sortOrder")
@@ -91,6 +97,19 @@ public class Student extends BaseEntity {
     public void replaceBatches(Set<UUID> next) {
         batchIds.clear();
         batchIds.addAll(next);
+    }
+
+    /** Moves the student (and their contacts) to another academy, into one of its classes and batches. */
+    public void transferTo(UUID targetOrganizationId, UUID centerId, Set<UUID> batchIds) {
+        this.organizationId = targetOrganizationId;
+        this.centerId = centerId;
+        replaceBatches(batchIds);
+        contacts.forEach(c -> c.moveTo(targetOrganizationId));
+    }
+
+    public void replaceTags(Collection<String> next) {
+        tags.clear();
+        tags.addAll(next);
     }
 
     public void replaceContacts(List<StudentContact> next) {
@@ -152,6 +171,7 @@ public class Student extends BaseEntity {
     public String getKitSize() { return kitSize; }
     public void setKitSize(String kitSize) { this.kitSize = kitSize; }
     public List<StudentContact> getContacts() { return contacts; }
+    public Set<String> getTags() { return tags; }
     public StudentStatus getStatus() { return status; }
     public void setStatus(StudentStatus status) { this.status = status; }
     public Instant getDeregisteredAt() { return deregisteredAt; }

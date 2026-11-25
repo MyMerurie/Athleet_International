@@ -14,7 +14,7 @@ public class StudentContact extends BaseEntity {
 
     public static final int MAX_PER_STUDENT = 3;
 
-    @Column(name = "organization_id", nullable = false, updatable = false)
+    @Column(name = "organization_id", nullable = false)
     private UUID organizationId;
 
     @Column(nullable = false) private String name;
@@ -36,6 +36,10 @@ public class StudentContact extends BaseEntity {
         this.mobile = mobile;
         this.email = email;
         this.sortOrder = sortOrder;
+    }
+
+    void moveTo(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 
     public UUID getOrganizationId() { return organizationId; }

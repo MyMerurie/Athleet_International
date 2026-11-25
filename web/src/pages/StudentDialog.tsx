@@ -5,9 +5,9 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, fieldErrors } from '../api/client';
-import type { Student } from '../api/types';
+import type { Student, StudentConfig } from '../api/types';
 import { useOrg } from '../org/OrgContext';
 import { clean, useForm } from '../components/common';
 import { BLOOD_GROUPS, COUNTRY_CODES, useBatchOptions, useCenterOptions } from '../components/options';
@@ -38,6 +38,12 @@ export function StudentDialog({ open, student, onClose }: { open: boolean; stude
   const f = useForm({ ...EMPTY });
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const config = useQuery({
+    queryKey: ['student-config', orgId],
+    queryFn: () => api.get<StudentConfig>(`/orgs/${orgId}/student-config`),
+    enabled: open,
+  });
+  const uniqueIdAuto = !!config.data?.uniqueIdAuto;
   const centers = useCenterOptions(orgId);
   const batches = useBatchOptions(orgId, f.values.centerId || undefined);
 
@@ -184,7 +190,10 @@ export function StudentDialog({ open, student, onClose }: { open: boolean; stude
           </Grid>
         ) : (
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}><TextField label="Unique ID" {...f.field('uniqueId')} inputProps={{ maxLength: 40 }} /></Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField label="Unique ID" {...f.field('uniqueId')} inputProps={{ maxLength: 40 }} disabled={uniqueIdAuto}
+                helperText={uniqueIdAuto ? (student?.uniqueId ? 'Generated automatically' : 'Generated on save') : f.errors.uniqueId} />
+            </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField select label="Blood Group" {...f.field('bloodGroup')}>
                 <MenuItem value="">—</MenuItem>

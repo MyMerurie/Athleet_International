@@ -338,7 +338,9 @@ public class SessionAttendanceService {
         List<Student> roster = editable ? students.activeInBatch(a.organizationId(), batch.getId()) : List.of();
         Set<UUID> ids = new HashSet<>(byStudent.keySet());
         roster.forEach(st -> ids.add(st.getId()));
-        Map<UUID, Student> people = ids.isEmpty() ? Map.of() : students.findByOrganizationIdAndIdIn(a.organizationId(), ids).stream()
+        // The ids come from this session's marks and this academy's roster, so no organization filter: a student who was
+        // transferred to another academy must still show up in the sessions that were recorded here.
+        Map<UUID, Student> people = ids.isEmpty() ? Map.of() : students.findAllById(ids).stream()
                 .collect(Collectors.toMap(Student::getId, st -> st));
         List<MarkResponse> rows = people.values().stream()
                 .sorted(Comparator.comparing((Student st) -> st.getFirstName().toLowerCase()).thenComparing(Student::getId))

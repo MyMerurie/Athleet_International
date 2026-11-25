@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, fieldErrors } from '../api/client';
 import { useOrg } from '../org/OrgContext';
 import { PageHeader } from '../components/common';
-import type { AttendanceConfig } from '../api/types';
+import type { AttendanceConfig, StudentConfig } from '../api/types';
 import { Loading } from '../App';
 
 const SECTIONS = [
@@ -56,6 +56,47 @@ function AttendanceConfigForm({ manage }: { manage: boolean }) {
   );
 }
 
+/** Player Unique ID Auto-generation: switch + prefix; the Unique ID becomes prefix + student number. */
+function UniqueIdForm({ manage }: { manage: boolean }) {
+  const { orgId } = useOrg();
+  const qc = useQueryClient();
+  const [v, setV] = useState<StudentConfig | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const q = useQuery({ queryKey: ['student-config', orgId], queryFn: () => api.get<StudentConfig>(`/orgs/${orgId}/student-config`) });
+  useEffect(() => { if (q.data) setV(q.data); }, [q.data]);
+  const save = useMutation({
+    mutationFn: () => api.put<StudentConfig>(`/orgs/${orgId}/student-config`, v),
+    onSuccess: (r) => { qc.setQueryData(['student-config', orgId], r); setMsg({ ok: true, text: 'Saved.' }); },
+    onError: (e) => setMsg({ ok: false, text: Object.values(fieldErrors(e)).join(', ') || errorMessage(e) }),
+  });
+  const apply = useMutation({
+    mutationFn: () => api.post<{ updated: number; skipped: number }>(`/orgs/${orgId}/student-config/apply`),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['students', orgId] });
+      setMsg({ ok: true, text: `${r.updated} student(s) updated${r.skipped ? `, ${r.skipped} skipped because that Unique ID is already in use` : ''}.` });
+    },
+    onError: (e) => setMsg({ ok: false, text: errorMessage(e) }),
+  });
+  if (q.isLoading) return <Loading />;
+  if (!v) return <Alert severity="error">{errorMessage(q.error)}</Alert>;
+  return (
+    <Stack spacing={2}>
+      {msg && <Alert severity={msg.ok ? 'success' : 'error'} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      <FormControlLabel label="Generate the Unique ID automatically (prefix + student number)"
+        control={<Switch checked={v.uniqueIdAuto} disabled={!manage} onChange={(e) => setV({ ...v, uniqueIdAuto: e.target.checked })} />} />
+      <TextField label="Prefix" value={v.uniqueIdPrefix} disabled={!manage || !v.uniqueIdAuto} sx={{ width: 240 }}
+        inputProps={{ maxLength: 10 }} helperText={`Example: ${v.uniqueIdPrefix}100001`}
+        onChange={(e) => setV({ ...v, uniqueIdPrefix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') })} />
+      {manage && (
+        <Stack direction="row" spacing={1}>
+          <Button variant="contained" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button disabled={apply.isPending || !q.data?.uniqueIdAuto} onClick={() => apply.mutate()}>Apply to students without a Unique ID</Button>
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
 export function SettingsPage() {
   const { orgId, access, can } = useOrg();
   const qc = useQueryClient();
@@ -92,7 +133,9 @@ export function SettingsPage() {
           <Card variant="outlined">
             <CardContent>
               <Typography variant="h6" gutterBottom>{section}</Typography>
-              {section === 'Attendance Configuration' ? <AttendanceConfigForm manage={manage} /> : section !== 'Branding Preference' ? (
+              {section === 'Attendance Configuration' ? <AttendanceConfigForm manage={manage} />
+                : section === 'Player Unique ID Auto-generation' ? <UniqueIdForm manage={manage} />
+                : section !== 'Branding Preference' ? (
                 <Alert severity="info">
                   {section === 'Fee Settings' ? 'Fees are scheduled for the final phase.' : 'This setting will be added in a later phase.'}
                 </Alert>

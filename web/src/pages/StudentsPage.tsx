@@ -14,10 +14,11 @@ import { useOrg } from '../org/OrgContext';
 import { EmptyState, PageHeader, Panel, SearchBox, useDebounced } from '../components/common';
 import { useBatchOptions, useCenterOptions } from '../components/options';
 import { StudentDialog } from './StudentDialog';
+import { TagsDialog } from './StudentRecords';
+import { IdCardDialog } from './StudentIdCard';
+import { TransferDialog } from './StudentTransfer';
 import { StudentMonthDialog } from './attendance/StudentMonthDialog';
 import { Loading } from '../App';
-
-const LATER = ['ID Card', 'Tag Student', 'Injury Log', 'Student History'];
 
 function useStudentCount(orgId: string, status: StudentStatus) {
   return useQuery({
@@ -115,6 +116,9 @@ export function StudentsPage() {
   const [batchesFor, setBatchesFor] = useState<Student | null>(null);
   const [deregFor, setDeregFor] = useState<StudentSummary | null>(null);
   const [attendanceFor, setAttendanceFor] = useState<StudentSummary | null>(null);
+  const [tagsFor, setTagsFor] = useState<Student | null>(null);
+  const [cardFor, setCardFor] = useState<Student | null>(null);
+  const [transferFor, setTransferFor] = useState<Student | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const active = useStudentCount(orgId, 'ACTIVE');
@@ -137,6 +141,11 @@ export function StudentsPage() {
     setActionError(null);
     try {
       if (action === 'profile') navigate(`/org/${orgId}/students/${row.id}`);
+      if (action === 'injuries') navigate(`/org/${orgId}/students/${row.id}?tab=injuries`);
+      if (action === 'history') navigate(`/org/${orgId}/students/${row.id}?tab=history`);
+      if (action === 'tags') setTagsFor(await loadFull(row.id));
+      if (action === 'idcard') setCardFor(await loadFull(row.id));
+      if (action === 'transfer') setTransferFor(await loadFull(row.id));
       if (action === 'edit') setDialog({ open: true, student: await loadFull(row.id) });
       if (action === 'batches') setBatchesFor(await loadFull(row.id));
       if (action === 'deregister') setDeregFor(row);
@@ -214,16 +223,22 @@ export function StudentsPage() {
         {manage && menu?.row.status === 'SUBMITTED' && <MenuItem onClick={() => act('approve', menu.row)}>Approve</MenuItem>}
         {manage && <MenuItem onClick={() => menu && act('edit', menu.row)}>Edit</MenuItem>}
         {manage && <MenuItem onClick={() => menu && act('batches', menu.row)}>Batches</MenuItem>}
-        {manage && <MenuItem onClick={() => menu && act('batches', menu.row)}>Transfer Student</MenuItem>}
+        {manage && <MenuItem onClick={() => menu && act('transfer', menu.row)}>Transfer Student</MenuItem>}
         {manage && <MenuItem onClick={() => menu && act('deregister', menu.row)}>Deregistration</MenuItem>}
         {viewAttendance && <MenuItem onClick={() => menu && act('attendance', menu.row)}>Attendance</MenuItem>}
-        {manage && LATER.map((l) => <MenuItem key={l} disabled>{l} (coming soon)</MenuItem>)}
+        {manage && <MenuItem onClick={() => menu && act('tags', menu.row)}>Tag Student</MenuItem>}
+        <MenuItem onClick={() => menu && act('injuries', menu.row)}>Injury Log</MenuItem>
+        <MenuItem onClick={() => menu && act('history', menu.row)}>Student History</MenuItem>
+        <MenuItem onClick={() => menu && act('idcard', menu.row)}>ID Card</MenuItem>
       </Menu>
 
       <StudentDialog open={dialog.open} student={dialog.student} onClose={() => setDialog({ open: false })} />
       <BatchesDialog student={batchesFor} onClose={() => setBatchesFor(null)} />
       <DeregisterDialog student={deregFor} onClose={() => setDeregFor(null)} />
       <StudentMonthDialog student={attendanceFor} onClose={() => setAttendanceFor(null)} />
+      <TagsDialog student={tagsFor} onClose={() => setTagsFor(null)} />
+      <IdCardDialog student={cardFor} onClose={() => setCardFor(null)} />
+      <TransferDialog student={transferFor} onClose={() => setTransferFor(null)} />
     </>
   );
 }

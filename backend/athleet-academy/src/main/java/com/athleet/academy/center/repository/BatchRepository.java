@@ -20,6 +20,9 @@ public interface BatchRepository extends JpaRepository<Batch, UUID> {
 
     List<Batch> findByIdIn(Collection<UUID> ids);
 
+    /** Batches of several classes without their slots or coaches (for pick lists). */
+    List<Batch> findByCenterIdInOrderByNameAsc(Collection<UUID> centerIds);
+
     boolean existsByCenterId(UUID centerId);
 
     boolean existsByCenterIdAndNameIgnoreCase(UUID centerId, String name);

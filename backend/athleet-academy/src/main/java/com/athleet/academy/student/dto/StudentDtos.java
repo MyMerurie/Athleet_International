@@ -2,6 +2,8 @@ package com.athleet.academy.student.dto;
 
 import com.athleet.academy.student.domain.DominantSide;
 import com.athleet.academy.student.domain.Gender;
+import com.athleet.academy.student.domain.InjurySeverity;
+import com.athleet.academy.student.domain.StudentHistoryEvent;
 import com.athleet.academy.student.domain.StudentStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -9,10 +11,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
+import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -66,6 +70,57 @@ public final class StudentDtos {
     public record ContactResponse(String name, String relationship, String countryCode, String mobile, String email) {
     }
 
+    /** Replaces all tags of a student. Blank and duplicate (case-insensitive) names are dropped by the service. */
+    public record TagsRequest(
+            @NotNull @Size(max = 10, message = "at most 10 tags")
+            List<@NotBlank @Size(max = 30, message = "at most 30 characters")
+                 @Pattern(regexp = "^[\\p{L}\\p{N} ._&/-]+$", message = "contains invalid characters") String> tags) {
+    }
+
+    public record InjuryRequest(
+            @NotNull @PastOrPresent LocalDate injuryDate,
+            @NotBlank @Size(max = 60) @Pattern(regexp = TEXT, message = "contains invalid characters") String bodyPart,
+            @NotNull InjurySeverity severity,
+            @Size(max = 1000) String description,
+            @PastOrPresent LocalDate recoveredOn) {
+    }
+
+    public record InjuryResponse(UUID id, LocalDate injuryDate, String bodyPart, InjurySeverity severity,
+                                 String description, LocalDate recoveredOn) {
+    }
+
+    public record StudentConfigRequest(
+            boolean uniqueIdAuto,
+            @NotNull @Pattern(regexp = "^[A-Z0-9-]{0,10}$", message = "up to 10 capital letters, digits or -") String uniqueIdPrefix) {
+    }
+
+    public record StudentConfigResponse(boolean uniqueIdAuto, String uniqueIdPrefix) {
+    }
+
+    /** How many students got a generated Unique ID, and how many were skipped because that value was already taken. */
+    public record ApplyUniqueIdsResponse(int updated, int skipped) {
+    }
+
+    public record TransferRequest(@NotNull UUID targetOrgId, @NotNull UUID centerId, @NotEmpty @Size(max = 5) Set<UUID> batchIds) {
+    }
+
+    /** After a transfer the student belongs to the target academy. */
+    public record TransferResult(UUID organizationId, UUID studentId) {
+    }
+
+    /** An academy the caller may transfer students to, with the classes and batches they may place them in. */
+    public record TransferTarget(UUID id, String name, List<TargetCenter> centers) {
+    }
+
+    public record TargetCenter(UUID id, String name, List<NamedRef> batches) {
+    }
+
+    /** One history entry; the from/to fields are name snapshots and only set for placement changes and transfers. */
+    public record HistoryEventResponse(UUID id, StudentHistoryEvent eventType, Instant occurredAt, String actorName,
+                                       String fromAcademy, String toAcademy, String fromCenter, String toCenter,
+                                       String fromBatches, String toBatches) {
+    }
+
     /** One weekly training slot of one of the student's batches. */
     public record TrainingDay(NamedRef batch, DayOfWeek day, LocalTime startTime, LocalTime endTime) {
     }
@@ -93,6 +148,6 @@ public final class StudentDtos {
                                   String country, String state, String city, String address, String pinCode,
                                   String schoolName, String schoolAddress, String grade, DominantSide dominantSide,
                                   String medicalCondition, String kitSize, List<ContactResponse> contacts,
-                                  StudentStatus status) {
+                                  List<String> tags, StudentStatus status) {
     }
 }

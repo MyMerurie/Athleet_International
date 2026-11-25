@@ -6,16 +6,20 @@ import com.athleet.academy.center.repository.BatchRepository;
 import com.athleet.academy.center.repository.CenterRepository;
 import com.athleet.academy.common.Text;
 import com.athleet.academy.student.domain.Student;
+import com.athleet.academy.student.domain.StudentConfig;
 import com.athleet.academy.student.domain.StudentContact;
+import com.athleet.academy.student.domain.StudentHistoryEvent;
 import com.athleet.academy.student.domain.StudentStatus;
 import com.athleet.academy.student.dto.StudentDtos.ChangeBatchesRequest;
 import com.athleet.academy.student.dto.StudentDtos.ContactRequest;
 import com.athleet.academy.student.dto.StudentDtos.ContactResponse;
+import com.athleet.academy.student.dto.StudentDtos.HistoryEventResponse;
 import com.athleet.academy.student.dto.StudentDtos.NamedRef;
 import com.athleet.academy.student.dto.StudentDtos.StudentProfile;
 import com.athleet.academy.student.dto.StudentDtos.StudentRequest;
 import com.athleet.academy.student.dto.StudentDtos.StudentResponse;
 import com.athleet.academy.student.dto.StudentDtos.StudentSummary;
+import com.athleet.academy.student.dto.StudentDtos.TagsRequest;
 import com.athleet.academy.student.dto.StudentDtos.TrainingDay;
 import com.athleet.academy.student.repository.StudentRepository;
 import com.athleet.core.audit.service.AuditService;
@@ -40,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -58,14 +63,19 @@ public class StudentService {
     private final CenterRepository centers;
     private final BatchRepository batches;
     private final AuditService audit;
+    private final StudentHistoryService history;
+    private final StudentConfigService config;
 
     public StudentService(AccessService access, StudentRepository students, CenterRepository centers,
-                          BatchRepository batches, AuditService audit) {
+                          BatchRepository batches, AuditService audit, StudentHistoryService history,
+                          StudentConfigService config) {
         this.access = access;
         this.students = students;
         this.centers = centers;
         this.batches = batches;
         this.audit = audit;
+        this.history = history;
+        this.config = config;
     }
 
     @Transactional(readOnly = true)
@@ -114,12 +124,66 @@ public class StudentService {
         if (email != null && students.existsByOrganizationIdAndEmailIgnoreCaseAndStatusNot(orgId, email, StudentStatus.DEREGISTERED)) {
             throw new ConflictException("A student with this email already exists.");
         }
-        Student s = new Student(orgId, students.nextStudentNo(), req.centerId(), Text.clean(req.firstName()), StudentStatus.ACTIVE);
+        long studentNo = students.nextStudentNo();
+        Student s = new Student(orgId, studentNo, req.centerId(), Text.clean(req.firstName()), StudentStatus.ACTIVE);
         apply(s, req);
+        StudentConfig cfg = config.forOrganization(orgId);
+        if (cfg.isUniqueIdAuto()) s.setUniqueId(StudentConfigService.generated(cfg, studentNo));
+        requireUniqueIdFree(orgId, s.getUniqueId(), null);
         s.replaceBatches(req.batchIds());
         students.save(s);
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "CREATE", null);
+        history.record(orgId, s.getId(), a.userId(), StudentHistoryEvent.REGISTERED);
         return toResponse(s);
+    }
+
+    /** The student's history, newest first. Same access rules as {@link #get}. */
+    @Transactional(readOnly = true)
+    public List<HistoryEventResponse> history(UUID orgId, UUID studentId) {
+        OrgAccess a = access.require(orgId, AppModule.STUDENT, AccessLevel.VIEW);
+        load(a, studentId);
+        return history.list(studentId);
+    }
+
+    /** Replaces the tags of a student; returns them sorted. */
+    @Transactional
+    public List<String> replaceTags(UUID orgId, UUID studentId, TagsRequest req) {
+        OrgAccess a = access.require(orgId, AppModule.STUDENT, AccessLevel.MANAGE);
+        Student s = load(a, studentId);
+        requireNotDeregistered(s);
+        s.replaceTags(normalizeTags(req.tags()));
+        audit.record(orgId, a.userId(), "STUDENT", s.getId(), "TAGS", null);
+        return sortedTags(s);
+    }
+
+    /** Trims, collapses spaces and drops case-insensitive duplicates, keeping the first spelling. */
+    private static List<String> normalizeTags(List<String> raw) {
+        Map<String, String> unique = new LinkedHashMap<>();
+        for (String t : raw) {
+            String tag = t.trim().replaceAll("\\s+", " ");
+            if (!tag.isEmpty()) unique.putIfAbsent(tag.toLowerCase(Locale.ROOT), tag);
+        }
+        return List.copyOf(unique.values());
+    }
+
+    private static List<String> sortedTags(Student s) {
+        return s.getTags().stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    /** Where a student is placed, as ids (to detect a change) and names (for the history). */
+    record Placement(UUID centerId, Set<UUID> batchIds, String center, String batches) {
+    }
+
+    Placement placement(Student s) {
+        Names n = names(List.of(s));
+        return new Placement(s.getCenterId(), new HashSet<>(s.getBatchIds()), n.center(s.getCenterId()).name(),
+                n.batches(s.getBatchIds()).stream().map(NamedRef::name).collect(Collectors.joining(", ")));
+    }
+
+    private void recordPlacementIfChanged(UUID orgId, UUID actorUserId, Student s, Placement before) {
+        Placement after = placement(s);
+        if (before.centerId().equals(after.centerId()) && before.batchIds().equals(after.batchIds())) return;
+        history.recordPlacementChange(orgId, s.getId(), actorUserId, before.center(), before.batches(), after.center(), after.batches());
     }
 
     @Transactional
@@ -132,11 +196,18 @@ public class StudentService {
                 && students.existsByOrganizationIdAndEmailIgnoreCaseAndStatusNot(orgId, email, StudentStatus.DEREGISTERED)) {
             throw new ConflictException("A student with this email already exists.");
         }
+        // With auto-generation on, the stored Unique ID is kept; otherwise the typed one must be free.
+        boolean autoUniqueId = config.forOrganization(orgId).isUniqueIdAuto();
+        String keptUniqueId = s.getUniqueId();
+        if (!autoUniqueId) requireUniqueIdFree(orgId, Text.clean(req.uniqueId()), keptUniqueId);
+        Placement before = placement(s);
         s.setFirstName(Text.clean(req.firstName()));
         s.setCenterId(req.centerId());
         s.replaceBatches(req.batchIds());
         apply(s, req);
+        if (autoUniqueId) s.setUniqueId(keptUniqueId);
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "UPDATE", null);
+        recordPlacementIfChanged(orgId, a.userId(), s, before);
         return toResponse(s);
     }
 
@@ -147,9 +218,11 @@ public class StudentService {
         Student s = load(a, studentId);
         requireNotDeregistered(s);
         validatePlacement(a, req.centerId(), req.batchIds());
+        Placement before = placement(s);
         s.setCenterId(req.centerId());
         s.replaceBatches(req.batchIds());
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "CHANGE_BATCHES", null);
+        recordPlacementIfChanged(orgId, a.userId(), s, before);
         return toResponse(s);
     }
 
@@ -163,6 +236,7 @@ public class StudentService {
         }
         s.setStatus(StudentStatus.ACTIVE);
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "APPROVE", null);
+        history.record(orgId, s.getId(), a.userId(), StudentHistoryEvent.APPROVED);
         return toResponse(s);
     }
 
@@ -174,13 +248,22 @@ public class StudentService {
         s.deregister(Text.clean(reason));
         // The reason may contain personal details, so it is not copied into the audit log.
         audit.record(orgId, a.userId(), "STUDENT", s.getId(), "DEREGISTER", null);
+        history.record(orgId, s.getId(), a.userId(), StudentHistoryEvent.DEREGISTERED);
     }
 
-    private Student load(OrgAccess a, UUID studentId) {
+    Student load(OrgAccess a, UUID studentId) {
         Student s = students.findByIdAndOrganizationId(studentId, a.organizationId())
                 .orElseThrow(() -> new NotFoundException("Student not found."));
         a.requireCenter(s.getCenterId());
         return s;
+    }
+
+    /** A Unique ID may be used by one non-deregistered student per academy (case-insensitive). */
+    private void requireUniqueIdFree(UUID orgId, String uniqueId, String currentUniqueId) {
+        if (uniqueId == null || uniqueId.equalsIgnoreCase(currentUniqueId)) return;
+        if (students.existsByOrganizationIdAndUniqueIdIgnoreCaseAndStatusNot(orgId, uniqueId, StudentStatus.DEREGISTERED)) {
+            throw new ConflictException("A student with this Unique ID already exists.");
+        }
     }
 
     private static void requireNotDeregistered(Student s) {
@@ -190,7 +273,7 @@ public class StudentService {
     }
 
     /** The class must belong to this organization (and the caller's center); every batch must belong to that class. */
-    private void validatePlacement(OrgAccess a, UUID centerId, Set<UUID> batchIds) {
+    void validatePlacement(OrgAccess a, UUID centerId, Set<UUID> batchIds) {
         a.requireCenter(centerId);
         if (!centers.existsByIdAndOrganizationId(centerId, a.organizationId())) {
             throw new NotFoundException("Class not found.");
@@ -250,7 +333,7 @@ public class StudentService {
                 s.getDominantSide(), s.getMedicalCondition(), s.getKitSize(),
                 s.getContacts().stream().map(c -> new ContactResponse(c.getName(), c.getRelationship(), c.getCountryCode(),
                         c.getMobile(), c.getEmail())).toList(),
-                s.getStatus());
+                sortedTags(s), s.getStatus());
     }
 
     /** Resolves class and batch names for a page of students with two queries. */

@@ -215,7 +215,46 @@ export interface Student {
   medicalCondition?: string;
   kitSize?: string;
   contacts: StudentContact[];
+  tags: string[];
   status: StudentStatus;
+}
+
+export interface StudentConfig {
+  uniqueIdAuto: boolean;
+  uniqueIdPrefix: string;
+}
+
+export interface TransferTarget {
+  id: string;
+  name: string;
+  centers: { id: string; name: string; batches: NamedRef[] }[];
+}
+
+export type InjurySeverity = 'MINOR' | 'MODERATE' | 'SEVERE';
+
+export interface Injury {
+  id: string;
+  injuryDate: string;
+  bodyPart: string;
+  severity: InjurySeverity;
+  description?: string;
+  recoveredOn?: string;
+}
+
+export type HistoryEventType =
+  | 'REGISTERED' | 'APPROVED' | 'PLACEMENT_CHANGED' | 'TRANSFERRED' | 'DEACTIVATED' | 'REACTIVATED' | 'DEREGISTERED';
+
+export interface HistoryEvent {
+  id: string;
+  eventType: HistoryEventType;
+  occurredAt: string;
+  actorName?: string;
+  fromAcademy?: string;
+  toAcademy?: string;
+  fromCenter?: string;
+  toCenter?: string;
+  fromBatches?: string;
+  toBatches?: string;
 }
 
 export interface StudentContact {

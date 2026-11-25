@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link as RouterLink, useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert, Box, Button, Chip, Grid2 as Grid, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Typography,
 } from '@mui/material';
@@ -13,8 +13,10 @@ import { EmptyState, PageHeader, Panel } from '../components/common';
 import { Loading } from '../App';
 import { StudentDialog } from './StudentDialog';
 import { StudentMonthPanel } from './attendance/StudentMonthDialog';
+import { StudentHistory, StudentInjuries, TagsDialog } from './StudentRecords';
+import { IdCardDialog } from './StudentIdCard';
 
-const TABS = ['DETAILS', 'CONTACTS', 'TRAINING', 'ATTENDANCE'] as const;
+const TABS = ['DETAILS', 'CONTACTS', 'TRAINING', 'ATTENDANCE', 'INJURIES', 'HISTORY'] as const;
 type ProfileTab = (typeof TABS)[number];
 
 const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -110,8 +112,13 @@ export function StudentProfilePage() {
   const { orgId, can, centerLabel } = useOrg();
   const { studentId = '' } = useParams();
   const manage = can('STUDENT', 'MANAGE');
-  const [tab, setTab] = useState<ProfileTab>('DETAILS');
+  // The tab lives in the URL (?tab=injuries) so the Students row menu can open the profile on a given tab.
+  const [params, setParams] = useSearchParams();
+  const wanted = TABS.find((t) => t.toLowerCase() === params.get('tab'));
+  const setTab = (t: ProfileTab) => setParams(t === 'DETAILS' ? {} : { tab: t.toLowerCase() }, { replace: true });
   const [editing, setEditing] = useState(false);
+  const [tagging, setTagging] = useState(false);
+  const [card, setCard] = useState(false);
   const q = useQuery({
     queryKey: ['students', orgId, 'profile', studentId],
     queryFn: () => api.get<StudentProfile>(`/orgs/${orgId}/students/${studentId}/profile`),
@@ -133,6 +140,8 @@ export function StudentProfilePage() {
   }
   const { student: s, trainingDays } = q.data;
   const tabs = TABS.filter((t) => t !== 'ATTENDANCE' || can('ATTENDANCE'));
+  const tab: ProfileTab = wanted && tabs.includes(wanted) ? wanted : 'DETAILS';
+  const editable = manage && s.status !== 'DEREGISTERED';
 
   return (
     <>
@@ -140,14 +149,17 @@ export function StudentProfilePage() {
         title={`${s.firstName} ${s.lastName ?? ''}`.trim()}
         actions={<>
           {back}
-          {manage && s.status !== 'DEREGISTERED' && (
+          <Button onClick={() => setCard(true)}>ID Card</Button>
+          {editable && (
             <Button variant="contained" startIcon={<EditIcon />} onClick={() => setEditing(true)}>Edit</Button>
           )}
         </>}
       />
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }} alignItems="center" flexWrap="wrap" useFlexGap>
         <Chip label={`ID ${s.studentNo}`} />
         <Chip label={titleCase(s.status)} color={s.status === 'ACTIVE' ? 'success' : 'default'} />
+        {s.tags.map((t) => <Chip key={t} variant="outlined" label={t} />)}
+        {editable && <Button size="small" onClick={() => setTagging(true)}>{s.tags.length ? 'Edit tags' : 'Add tags'}</Button>}
       </Stack>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" sx={{ mb: 2 }}>
         {tabs.map((t) => <Tab key={t} value={t} label={titleCase(t)} />)}
@@ -157,8 +169,12 @@ export function StudentProfilePage() {
         {tab === 'CONTACTS' && <Contacts s={s} />}
         {tab === 'TRAINING' && <Training days={trainingDays} />}
         {tab === 'ATTENDANCE' && <Box sx={{ p: 2 }}><StudentMonthPanel studentId={s.id} /></Box>}
+        {tab === 'INJURIES' && <StudentInjuries studentId={s.id} manage={editable} />}
+        {tab === 'HISTORY' && <StudentHistory studentId={s.id} />}
       </Panel>
+      <IdCardDialog student={card ? s : null} onClose={() => setCard(false)} />
       {manage && <StudentDialog open={editing} student={s} onClose={() => setEditing(false)} />}
+      {manage && <TagsDialog student={tagging ? s : null} onClose={() => setTagging(false)} />}
     </>
   );
 }
